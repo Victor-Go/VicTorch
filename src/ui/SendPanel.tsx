@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { COLOR_COUNTS, FPS_LEVELS, GRID_SIZES, QUIET, REDUNDANCY_LEVELS, bodyCapacity } from '../frame';
+import { COLOR_COUNTS, FPS_LEVELS, GRID_SIZES, REDUNDANCY_LEVELS, bodyCapacity } from '../frame';
 import { useI18n } from '../i18n/react';
 import {
   blockCount, createFileSource, createFrameClock, estimateSeconds, minimumFramesForEndless, planToImage, startTicker, totalFrames,
   type FileSource,
 } from '../sender';
-import { CodeScreen, pickCellPx, useCodeScreen } from './CodeScreen';
+import { CodeScreen, pickTargetPx, useCodeScreen, useCountdown } from './CodeScreen';
 import { formatBytes, formatDuration, formatRate } from './format';
 
 export const SendPanel = () => {
@@ -20,14 +20,17 @@ export const SendPanel = () => {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const screen = useCodeScreen();
+  const countdown = useCountdown();
   const stopRef = useRef<(() => void) | null>(null);
   const picker = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => () => stopRef.current?.(), []);
 
   const stop = (msg: string) => {
+    countdown.cancel();
     stopRef.current?.();
     stopRef.current = null;
+    screen.clear();
     screen.exitFullscreen();
     setRunning(false);
     setStatus(msg);
@@ -44,6 +47,12 @@ export const SendPanel = () => {
       return;
     }
     if (fullscreen) screen.enterFullscreen();
+    setRunning(true);
+    setStatus(t('send.statusCountdown'));
+    countdown.begin(() => run(source));
+  };
+
+  const run = (source: FileSource) => {
     const fps = FPS_LEVELS[fpsIdx];
     const clock = createFrameClock(1000 / fps);
     const planned = redIdx === 'endless' ? null : totalFrames(source.info.k, redIdx);
@@ -51,7 +60,7 @@ export const SendPanel = () => {
     stopRef.current = startTicker(clock, () => {
       const plan = source.next();
       if (!plan) return stop(t('send.statusDone'));
-      screen.draw(planToImage(plan, pickCellPx(GRID_SIZES[plan.nIdx] + 2 * QUIET)));
+      screen.draw(planToImage(plan, pickTargetPx()));
       shown++;
       if (shown % 5 !== 0) return;
       if (planned) {
@@ -61,7 +70,6 @@ export const SendPanel = () => {
         setStatus(t('send.statusEndless', { sent: shown }));
       }
     });
-    setRunning(true);
     setStatus(t('send.statusSending'));
   };
 
@@ -151,7 +159,7 @@ export const SendPanel = () => {
           {!running ? (
             <button className="primary" disabled={!file} onClick={start}>{t('send.start')}</button>
           ) : (
-            <button onClick={() => stop(t('send.statusStopped'))}>{t('send.stop')}</button>
+            <button onClick={() => stop(t('send.statusStopped'))}>{countdown.count !== null ? t('common.cancel') : t('send.stop')}</button>
           )}
         </div>
         <label className="check">
@@ -164,7 +172,7 @@ export const SendPanel = () => {
         {error && <p className="error">{error}</p>}
         <p className="status">{status}</p>
       </div>
-      <CodeScreen screen={screen} />
+      <CodeScreen screen={screen} count={countdown.count} />
     </section>
   );
 };

@@ -43,6 +43,9 @@ type Combo = { f: number; n: number; c: number };
 
 const throughput = (k: Combo, rate: number): number => bodyCapacity(k.n, k.c) * FPS_LEVELS[k.f] * rate;
 
+/** Effective bandwidth of one measured step in bytes per second: payload per frame x fps x success rate. */
+export const stepBandwidth = (r: StepResult): number => throughput({ f: r.fpsIdx, n: r.nIdx, c: r.cIdx }, rateOf(r));
+
 export const recommend = (results: StepResult[]): Recommendation => {
   const sA = sweepOf(results, 0);
   const sB = sweepOf(results, 1);
@@ -71,46 +74,29 @@ export const recommend = (results: StepResult[]): Recommendation => {
     };
   };
 
-  if (!D.passedAny) {
-    return finish({ f: CONSERVATIVE_FPS_IDX, n: CONSERVATIVE_SPEC.nIdx, c: CONSERVATIVE_SPEC.cIdx }, 0.5, true);
+  const fallback = () =>
+    finish({ f: CONSERVATIVE_FPS_IDX, n: CONSERVATIVE_SPEC.nIdx, c: CONSERVATIVE_SPEC.cIdx }, 0.5, true);
+
+  // Every step is a complete, directly measured configuration. Candidates are the steps that pass
+  // the threshold along an unbroken run from the base step of their sweep (isolated lucky passes are ignored).
+  const candidates = new Map<number, StepResult>();
+  for (const sweep of [sA, sB, sC, sD]) {
+    for (const r of sweep) {
+      if (rateOf(r) < PASS_RATE) break;
+      candidates.set(r.stepId, r);
+    }
   }
+  if (candidates.size === 0) return fallback();
 
-  const verifiedSteps = sD.slice(0, D.level + 1);
-  const verified = verifiedSteps
-    .map((r) => ({ f: r.fpsIdx, n: r.nIdx, c: r.cIdx, rate: rateOf(r) }));
-
-  const estimateRate = (k: Combo): number => {
-    const exact = verifiedSteps.find((r) => r.fpsIdx === k.f && r.nIdx === k.n && r.cIdx === k.c);
-    if (exact) return rateOf(exact);
-    const fr = sA.slice(0, A.level + 1).find((r) => r.fpsIdx === k.f);
-    const nr = sB.slice(0, B.level + 1).find((r) => r.nIdx === k.n);
-    const cr = sC.slice(0, C.level + 1).find((r) => r.cIdx === k.c);
-    return Math.min(...[fr, nr, cr].map((r) => (r ? rateOf(r) : 1)));
-  };
-
-  const feasible: Combo[] = [];
-  for (let f = 0; f <= fMax; f++)
-    for (let n = 0; n <= nMax; n++)
-      for (let c = 0; c <= cMax; c++)
-        if (verified.some((v) => f <= v.f && n <= v.n && c <= v.c)) feasible.push({ f, n, c });
-
-  if (feasible.length === 0) {
-    return finish({ f: CONSERVATIVE_FPS_IDX, n: CONSERVATIVE_SPEC.nIdx, c: CONSERVATIVE_SPEC.cIdx }, 0.5, true);
+  let best: StepResult | null = null;
+  for (const r of candidates.values()) {
+    if (!best) {
+      best = r;
+      continue;
+    }
+    const d = stepBandwidth(r) - stepBandwidth(best);
+    const lighter = r.fpsIdx + r.nIdx + r.cIdx < best.fpsIdx + best.nIdx + best.cIdx;
+    if (d > 1e-9 || (Math.abs(d) <= 1e-9 && lighter)) best = r;
   }
-
-  const score = (k: Combo) => throughput(k, estimateRate(k));
-  const conservativeFirst = (a: Combo, b: Combo) => a.f + a.n + a.c - (b.f + b.n + b.c);
-  const best = feasible.reduce((acc, k) => {
-    const d = score(k) - score(acc);
-    return d > 1e-9 || (Math.abs(d) <= 1e-9 && conservativeFirst(k, acc) < 0) ? k : acc;
-  });
-
-  const steps: Combo[] = [
-    { ...best, f: best.f - 1 },
-    { ...best, n: best.n - 1 },
-    { ...best, c: best.c - 1 },
-  ].filter((k) => k.f >= 0 && k.n >= 0 && k.c >= 0);
-  const chosen = steps.length ? steps.reduce((acc, k) => (score(k) > score(acc) ? k : acc)) : best;
-
-  return finish(chosen, estimateRate(chosen), !A.passedAny || !B.passedAny || !C.passedAny);
+  return finish({ f: best!.fpsIdx, n: best!.nIdx, c: best!.cIdx }, rateOf(best!), false);
 };

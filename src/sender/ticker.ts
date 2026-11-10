@@ -46,8 +46,21 @@ export const startTicker = (clock: ReturnType<typeof createFrameClock>, onTick: 
   };
 };
 
-export const planToImage = (plan: FramePlan, cellPx: number): RGBAImage => {
+/** The grid occupies this fraction of the image side whatever the density, so the code keeps one physical size. */
+export const CODE_FRACTION = 0.82;
+
+/** Renders a frame so the grid is always CODE_FRACTION of the image width (the rest is white margin). */
+export const planToImage = (plan: FramePlan, targetPx: number): RGBAImage => {
   const { header, region } = buildFrame(plan);
+  const n = GRID_SIZES[plan.nIdx];
   const cells = encodeGrid(plan.nIdx, plan.cIdx, header, region);
-  return renderRGBA(cells, GRID_SIZES[plan.nIdx], plan.cIdx, cellPx);
+  const cellPx = Math.max(2, Math.floor((targetPx * CODE_FRACTION) / n));
+  const code = renderRGBA(cells, n, plan.cIdx, cellPx, 0);
+  const side = Math.round(code.width / CODE_FRACTION);
+  const off = Math.floor((side - code.width) / 2);
+  const data = new Uint8ClampedArray(side * side * 4).fill(255);
+  for (let y = 0; y < code.height; y++) {
+    data.set(code.data.subarray(y * code.width * 4, (y + 1) * code.width * 4), ((y + off) * side + off) * 4);
+  }
+  return { width: side, height: side, data };
 };

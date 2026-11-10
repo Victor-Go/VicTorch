@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FPS_LEVELS, GRID_SIZES, COLOR_COUNTS, bodyCapacity } from '../src/frame';
 import {
-  PROBE_STEPS, SWEEPS, buildProbeSchedule, createProbeTally, probeDurationSeconds, recommend, type StepResult,
+  PROBE_STEPS, SWEEPS, buildProbeSchedule, createProbeTally, probeDurationSeconds, recommend, stepBandwidth, type StepResult,
 } from '../src/probe';
 
 type StepInfo = { stepId: number; seg: number; fpsIdx: number; nIdx: number; cIdx: number };
@@ -55,14 +55,22 @@ describe('recommend', () => {
     expect(recommend(base(6)).thresholds.A).toBe(2);
   });
 
-  it('perfect link: picks a fast verified config one notch below the peak, with modest redundancy', () => {
+  it('perfect link: recommends the measured step with the highest bandwidth', () => {
     const rec = recommend(results(() => 1));
     expect(rec.poor).toBe(false);
     expect(rec.thresholds).toEqual({ A: 8, B: 4, C: 3, D: 6 });
-    const peak = bodyCapacity(4, 3) * FPS_LEVELS[8];
-    expect(rec.expectedBytesPerSec).toBeLessThan(peak);
-    expect(rec.expectedBytesPerSec).toBeGreaterThan(peak * 0.7);
+    expect([rec.fpsIdx, rec.nIdx, rec.cIdx]).toEqual([8, 4, 3]);
+    expect(rec.expectedBytesPerSec).toBe(bodyCapacity(4, 3) * FPS_LEVELS[8]);
     expect(rec.redundancy).toBe(0.3);
+  });
+
+  it('bandwidth counts the success rate, so a lossy fast step can lose to a clean slower one', () => {
+    const fast = PROBE_STEPS[PROBE_STEPS.length - 1];
+    const rs = results((s) => (s.stepId === fast.stepId ? 0.875 : 1));
+    const best = recommend(rs);
+    const lossy = rs.find((r) => r.stepId === fast.stepId)!;
+    expect(stepBandwidth(lossy)).toBeLessThan(bodyCapacity(4, 3) * FPS_LEVELS[8]);
+    expect(best.expectedBytesPerSec).toBeGreaterThanOrEqual(stepBandwidth(lossy) - 1e-6);
   });
 
   it('high frame rates failing caps the fps', () => {
@@ -83,13 +91,12 @@ describe('recommend', () => {
     expect(rec.cIdx).toBeLessThanOrEqual(1);
   });
 
-  it('combined stress failing limits the combination even if single axes pass', () => {
-    const rec = recommend(results((s) => (s.seg === 3 && dLevel(s.stepId) >= 3 ? 0.1 : 1)));
-    expect(rec.thresholds.D).toBe(2);
-    // D level 2 is (fps idx4, N idx2, colours idx1)
-    expect(rec.fpsIdx).toBeLessThanOrEqual(4);
-    expect(rec.nIdx).toBeLessThanOrEqual(2);
-    expect(rec.cIdx).toBeLessThanOrEqual(1);
+  it('only ever recommends a configuration that was measured to pass', () => {
+    const rate: RateFn = (s) => (s.seg === 3 && dLevel(s.stepId) >= 3 ? 0.1 : s.fpsIdx > 6 ? 0.5 : 1);
+    const rs = results(rate);
+    const rec = recommend(rs);
+    const match = rs.find((r) => r.fpsIdx === rec.fpsIdx && r.nIdx === rec.nIdx && r.cIdx === rec.cIdx)!;
+    expect(match.passed / match.total).toBeGreaterThanOrEqual(0.85);
   });
 
   it('observed loss raises redundancy', () => {

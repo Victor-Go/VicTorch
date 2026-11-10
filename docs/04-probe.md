@@ -39,13 +39,12 @@ type StepResult = { stepId; seg: 0|1|2|3; fpsIdx; nIdx; cIdx; total: number; pas
 
 1. 对 A/B/C/D 各段，阈值档 = 沿该段扫描序列、从第 0 档（起点）起，连续满足 `rate ≥ PASS_RATE` 的最高档（第 0 档不通过则阈值档取 0 并标记 `poor`）。
    取“连续前缀”而非“任意最高通过档”，以免个别偶然通过的高档误导。
-2. 记 A/B/C 阈值为 `fMax / nMax / cMax`。D 通过的各档 `(f_L, n_L, c_L)` 构成“已验证组合”。
-3. 可行组合 `(f,n,c)`：`f≤fMax, n≤nMax, c≤cMax`，且存在 D 的某个通过档 L 使 `f≤f_L, n≤n_L, c≤c_L`。
-   估计成功率：恰为 D 档则用其实测成功率，否则取 `min(A 档率, B 档率, C 档率)`。
-4. 取吞吐最大的可行组合（并列取更保守者），再“降一档”：在 `f-1 / n-1 / c-1` 三种降法中取吞吐最高者（某维已为 0 则不可降）。
-5. 纠错比例：推荐配置的丢帧率 `p = 1 - 估计成功率`，
+2. 每一档本身就是一个完整的、被实测过的配置（帧率、密度、颜色）。候选 = 各段扫描序列中，从起点档起连续满足 `rate ≥ PASS_RATE` 的那些档（孤立的偶然通过不计）。
+3. 每档带宽 `bandwidth = (capacityBytes(n,c) - 4) * FPS_LEVELS[f] * rate`（字节/秒），接收端对每一档都显示。
+4. 推荐候选中带宽最高的一档（并列取更保守者）；不再外推未测过的组合，也不再额外降档。
+5. 纠错比例：推荐档的丢帧率 `p = 1 - 该档成功率`，
    `r = (LT_OVERHEAD + p) / (1 - p)`，取 `REDUNDANCY_LEVELS` 中不小于 `r` 的最小档，超过 100% 取 100%。
-6. 若 D 段第 0 档也未通过，返回保守默认 (fps4, N48, 2 色) 并 `poor = true`。
+6. 若起点档也未通过，返回保守默认 (fps4, N48, 2 色) 并 `poor = true`。
 
 输出：
 
@@ -56,6 +55,6 @@ type Recommendation = {
   expectedBytesPerSec: number;
   lossRate: number;
   poor: boolean;
-  thresholds: { A: number; B: number; C: number; D: number };  // 各段阈值档
+  thresholds: { A: number; B: number; C: number; D: number };  // A/B/C 为通过的最高 fpsIdx/nIdx/cIdx，D 为组合序列中的档位序号
 };
 ```

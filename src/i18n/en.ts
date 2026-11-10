@@ -4,6 +4,9 @@ export const en = {
   'lang.switch': '中文',
   'lang.switchLabel': 'Switch language',
 
+  'common.cancel': 'Cancel',
+  'ghost.hint': 'Aim the camera so the whole dashed area is in view',
+
   'tab.send': 'Send',
   'tab.receive': 'Receive',
   'tab.probe': 'Speed test',
@@ -31,6 +34,7 @@ export const en = {
   'send.etaFinite': 'Estimated send time: {time}.',
   'send.etaEndless': 'Sends continuously; about {time} to complete if no frames are lost.',
   'send.warn': 'With a low error-correction ratio the receiver may not finish. If unsure, choose "Send continuously".',
+  'send.statusCountdown': 'Starting soon: aim the receiver at the dashed area',
   'send.statusSending': 'Sending…',
   'send.statusProgress': 'Sent {sent} / {total} frames, about {left} left',
   'send.statusEndless': 'Sent {sent} frames (continuous: stop manually once the receiver is done)',
@@ -42,6 +46,7 @@ export const en = {
   'probe.start': 'Start test',
   'probe.stop': 'Stop',
   'probe.idle': 'Not started',
+  'probe.statusCountdown': 'Starting soon: aim the receiver at the dashed area',
   'probe.finished': 'Test finished. See the result on the receiver.',
   'probe.stopped': 'Stopped',
   'probe.seg.0': 'A Frame rate',
@@ -81,13 +86,16 @@ export const en = {
   'rx.probe.thGrid': 'Grid',
   'rx.probe.thColors': 'Colors',
   'rx.probe.thRate': 'Success',
-  'rx.probe.recTitle': 'Recommended settings (enter them on the sender)',
+  'rx.probe.thBandwidth': 'Bandwidth',
+  'rx.probe.best': 'Recommended',
+  'rx.probe.recBandwidth': 'Bandwidth: {rate}',
+  'rx.probe.recTitle': 'Recommended settings: highest measured bandwidth (enter them on the sender)',
   'rx.probe.recFps': 'Frame rate: {v} fps',
   'rx.probe.recDensity': 'Density: {n} × {n}',
   'rx.probe.recColors': 'Colors: {n}',
   'rx.probe.recRedundancy': 'Error correction: {pct}%',
   'rx.probe.recNote':
-    'Expected effective rate about {rate} (payload only, before error-correction overhead). Observed frame loss near the recommended settings: about {loss}%.',
+    'Bandwidth is payload per frame × frame rate × success rate, before error-correction overhead. Observed frame loss at the recommended settings: about {loss}%.',
   'rx.probe.poor':
     'Link quality is very poor, so conservative settings are recommended. Adjust distance, brightness and focus, then test again.',
 } as const;

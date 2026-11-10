@@ -97,7 +97,7 @@ describe('file transfer', () => {
     const session = createReceiverSession();
     for (let i = 0; i < 2; i++) {
       const plan = src.next()!;
-      const img = distort(planToImage(plan, 8), { angle: 4, tilt: 0.05, noise: 3, gain: [0.95, 1, 1.05], offset: 6, seed: i + 1 });
+      const img = distort(planToImage(plan, 800), { angle: 4, tilt: 0.05, noise: 3, gain: [0.95, 1, 1.05], offset: 6, seed: i + 1 });
       const out = decodeImageToFrame(img);
       expect(out.ok).toBe(true);
       if (out.ok) session.onFrame(out.frame, i * 100);
@@ -137,7 +137,7 @@ describe('probe flow', () => {
   };
 
   it('receiver enters probe mode by itself, tallies each step and recommends when the end frames arrive', () => {
-    const session = run((s) => !(s.seg === 0 && s.fpsIdx >= 6));
+    const session = run((s) => s.fpsIdx < 6);
     const st = session.getState();
     expect(st.mode).toBe('probe');
     expect(st.probe?.finished).toBe(true);

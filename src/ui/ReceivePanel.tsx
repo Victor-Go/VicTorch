@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createDecoder, isCameraAvailable, startCamera, startGrabber, type CameraInfo } from '../camera';
 import { COLOR_COUNTS, FPS_LEVELS, GRID_SIZES } from '../frame';
+import { stepBandwidth } from '../probe';
 import { useI18n } from '../i18n/react';
 import { createReceiverSession, type ReceiverSession, type ReceiverState } from '../receiver';
 import { formatBytes, formatDuration, formatRate } from './format';
@@ -159,17 +160,30 @@ export const ReceivePanel = () => {
                   <th>{t('rx.probe.thGrid')}</th>
                   <th>{t('rx.probe.thColors')}</th>
                   <th>{t('rx.probe.thRate')}</th>
+                  <th>{t('rx.probe.thBandwidth')}</th>
                 </tr>
               </thead>
               <tbody>
                 {probe.results.map((r) => (
-                  <tr key={r.stepId} className={r.stepId === probe.currentStepId && !probe.finished ? 'current' : ''}>
+                  <tr
+                    key={r.stepId}
+                    className={[
+                      r.stepId === probe.currentStepId && !probe.finished ? 'current' : '',
+                      rec && r.fpsIdx === rec.fpsIdx && r.nIdx === rec.nIdx && r.cIdx === rec.cIdx ? 'best' : '',
+                    ].join(' ')}
+                  >
                     <td>{t(`probe.seg.${r.seg}`)}</td>
                     <td>{r.stepId + 1}</td>
                     <td>{FPS_LEVELS[r.fpsIdx]} fps</td>
                     <td>{GRID_SIZES[r.nIdx]}</td>
                     <td>{COLOR_COUNTS[r.cIdx]}</td>
                     <td>{r.passed}/{r.total} ({Math.round((r.passed / Math.max(1, r.total)) * 100)}%)</td>
+                    <td>
+                      {formatRate(stepBandwidth(r))}
+                      {rec && r.fpsIdx === rec.fpsIdx && r.nIdx === rec.nIdx && r.cIdx === rec.cIdx && (
+                        <span className="badge"> ★ {t('rx.probe.best')}</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -182,10 +196,11 @@ export const ReceivePanel = () => {
                 <li>{t('rx.probe.recFps', { v: rec.fps })}</li>
                 <li>{t('rx.probe.recDensity', { n: rec.gridSize })}</li>
                 <li>{t('rx.probe.recColors', { n: rec.colors })}</li>
+                <li>{t('rx.probe.recBandwidth', { rate: formatRate(rec.expectedBytesPerSec) })}</li>
                 <li>{t('rx.probe.recRedundancy', { pct: Math.round(rec.redundancy * 100) })}</li>
               </ul>
               <p>
-                {t('rx.probe.recNote', { rate: formatRate(rec.expectedBytesPerSec), loss: (rec.lossRate * 100).toFixed(0) })}
+                {t('rx.probe.recNote', { loss: (rec.lossRate * 100).toFixed(0) })}
               </p>
               {rec.poor && <p className="error">{t('rx.probe.poor')}</p>}
             </div>

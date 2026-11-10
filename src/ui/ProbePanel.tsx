@@ -1,23 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import { COLOR_COUNTS, FPS_LEVELS, GRID_SIZES, QUIET } from '../frame';
+import { COLOR_COUNTS, FPS_LEVELS, GRID_SIZES } from '../frame';
 import { useI18n } from '../i18n/react';
 import { createFrameClock, createProbeSource, planToImage, startTicker, type ProbeStatus } from '../sender';
-import { CodeScreen, pickCellPx, useCodeScreen } from './CodeScreen';
+import { CodeScreen, pickTargetPx, useCodeScreen, useCountdown } from './CodeScreen';
 
 export const ProbePanel = () => {
   const { t } = useI18n();
   const [running, setRunning] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [status, setStatus] = useState<ProbeStatus | 'finished' | 'stopped' | null>(null);
+  const [status, setStatus] = useState<ProbeStatus | 'countdown' | 'finished' | 'stopped' | null>(null);
   const [progress, setProgress] = useState(0);
   const screen = useCodeScreen();
+  const countdown = useCountdown();
   const stopRef = useRef<(() => void) | null>(null);
 
   useEffect(() => () => stopRef.current?.(), []);
 
   const stop = (final: 'finished' | 'stopped') => {
+    countdown.cancel();
     stopRef.current?.();
     stopRef.current = null;
+    screen.clear();
     screen.exitFullscreen();
     setRunning(false);
     setStatus(final);
@@ -25,21 +28,27 @@ export const ProbePanel = () => {
 
   const start = () => {
     if (fullscreen) screen.enterFullscreen();
+    setRunning(true);
+    setStatus('countdown');
+    countdown.begin(run);
+  };
+
+  const run = () => {
     const source = createProbeSource();
     const clock = createFrameClock(250);
     stopRef.current = startTicker(clock, () => {
       const f = source.next();
       if (!f) return stop('finished');
-      screen.draw(planToImage(f.plan, pickCellPx(GRID_SIZES[f.plan.nIdx] + 2 * QUIET)));
+      screen.draw(planToImage(f.plan, pickTargetPx()));
       clock.setInterval(1000 / f.fps);
       setStatus(f.status);
       setProgress(source.progress());
     });
-    setRunning(true);
   };
 
   const text = (() => {
     if (!status) return t('probe.idle');
+    if (status === 'countdown') return t('probe.statusCountdown');
     if (status === 'finished') return t('probe.finished');
     if (status === 'stopped') return t('probe.stopped');
     if (status.kind === 'end') return t('probe.status.end');
@@ -64,7 +73,7 @@ export const ProbePanel = () => {
           {!running ? (
             <button className="primary" onClick={start}>{t('probe.start')}</button>
           ) : (
-            <button onClick={() => stop('stopped')}>{t('probe.stop')}</button>
+            <button onClick={() => stop('stopped')}>{countdown.count !== null ? t('common.cancel') : t('probe.stop')}</button>
           )}
         </div>
         <label className="check">
@@ -77,7 +86,7 @@ export const ProbePanel = () => {
         <p className="status">{text}</p>
         <progress value={progress} max={1} />
       </div>
-      <CodeScreen screen={screen} />
+      <CodeScreen screen={screen} count={countdown.count} />
     </section>
   );
 };
