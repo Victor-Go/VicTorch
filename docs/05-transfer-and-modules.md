@@ -2,12 +2,12 @@
 
 ## 发送（sender）
 
-`createFileSource({ data, name, spec: {nIdx,cIdx}, redundancyIdx | 'endless', transferId?, seedBase? })`
+`createFileSource({ data, name, spec: {nIdx,cIdx}, redundancyIdx, transferId?, seedBase? })`
 
 - `blockSize = capacityBytes(spec) - 4`，`K = ceil(size / blockSize)`；空文件拒绝。
 - 序列：开头连续 3 个 META，之后每 16 个 DATA 插 1 个 META。
-- 有限模式共 `ceil(K * (1 + REDUNDANCY_LEVELS[redundancyIdx]))` 个 DATA 帧，随后 `next()` 返回 `null`。
-- 一直发送：DATA 种子 `seedBase + i` 无限递增，直至用户停止。
+- 发送永不自行停止：DATA 种子 `seedBase + i` 无限递增，直至用户停止，`next()` 总是返回帧。
+- `redundancyIdx` 只决定“计划帧数” `plannedData = ceil(K * (1 + REDUNDANCY_LEVELS[redundancyIdx]))`，界面据此显示进度条和预计时间；超过计划帧数后继续发送。
 - 返回的 `FramePlan` 经 `planToCells(plan)`（buildFrame + encodeGrid）得到格子码，`renderRGBA` 绘制。
 
 `createTicker(fps, onTick)`：基于 `requestAnimationFrame` 时间戳节拍，不使用 setInterval；

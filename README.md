@@ -15,7 +15,7 @@ Pure front-end: no backend, no network requests. Your data never leaves the devi
 Notes:
 
 - The camera needs HTTPS or localhost; GitHub Pages satisfies this.
-- With a low error-correction ratio the finite mode may not finish. If unsure, choose "Send continuously" and stop it manually once the receiver is done.
+- Sending never stops by itself: after the planned frames it keeps producing new ones until you press Stop, so a few damaged frames never force a resend. The error-correction ratio only sets the planned frame count used for the progress bar and time estimates.
 - Transfer is one-way: the sender cannot know the receiver's result.
 - The interface follows the browser language (English or Simplified Chinese, English as fallback) and can be switched at the top right.
 

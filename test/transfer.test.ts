@@ -30,7 +30,7 @@ const makeFile = (n: number, seed: number) => {
 describe('file transfer', () => {
   it('endless mode survives loss, reordering and duplicates, and the file CRC passes', () => {
     const data = makeFile(20000, 5);
-    const src = createFileSource({ data, name: '测试文件.bin', spec: { nIdx: 1, cIdx: 1 }, redundancyIdx: 'endless' });
+    const src = createFileSource({ data, name: '测试文件.bin', spec: { nIdx: 1, cIdx: 1 }, redundancyIdx: 2 });
     const session = createReceiverSession();
     const r = rngOf(9);
     let t = 0;
@@ -38,7 +38,7 @@ describe('file transfer', () => {
     while (session.getState().transfer?.status !== 'done' && produced < src.info.k * 6) {
       const batch: ParsedFrame[] = [];
       for (let i = 0; i < 10; i++) {
-        const f = wire(src.next()!);
+        const f = wire(src.next());
         produced++;
         if (f) batch.push(f);
       }
@@ -58,27 +58,47 @@ describe('file transfer', () => {
 
   it('buffers data frames that arrive before the metadata frame', () => {
     const data = makeFile(3000, 2);
-    const src = createFileSource({ data, name: 'a', spec: { nIdx: 1, cIdx: 0 }, redundancyIdx: 'endless' });
+    const src = createFileSource({ data, name: 'a', spec: { nIdx: 1, cIdx: 0 }, redundancyIdx: 2 });
     const frames: ParsedFrame[] = [];
-    for (let i = 0; i < src.info.k * 4; i++) frames.push(wire(src.next()!)!);
+    for (let i = 0; i < src.info.k * 4; i++) frames.push(wire(src.next())!);
     const dataFirst = [...frames.filter((f) => f.header.type === 0), ...frames.filter((f) => f.header.type === 1)];
     const session = createReceiverSession();
     dataFirst.forEach((f, i) => session.onFrame(f, i));
     expect(session.getState().transfer?.fileBytes).toEqual(data);
   });
 
-  it('finite mode stops after ceil(K*(1+r)) data frames', () => {
+  it('never stops by itself: it keeps producing new symbols past the planned count', () => {
     const src = createFileSource({ data: makeFile(5000, 1), name: 'x', spec: { nIdx: 1, cIdx: 0 }, redundancyIdx: 1 });
-    let data = 0;
-    for (let f = src.next(); f; f = src.next()) if (f.type === 0) data++;
-    expect(data).toBe(Math.ceil(src.info.k * 1.2));
+    expect(src.info.plannedData).toBe(Math.ceil(src.info.k * 1.2));
+    const seeds = new Set<number>();
+    for (let i = 0; i < src.info.plannedData * 3; i++) {
+      const f = src.next();
+      if (f.type === 0) seeds.add(f.arg);
+    }
+    expect(seeds.size).toBeGreaterThan(src.info.plannedData * 2);
+  });
+
+  it('repeated captures of the same frame do not inflate progress or rate', () => {
+    const data = makeFile(8000, 6);
+    const src = createFileSource({ data, name: 'x', spec: { nIdx: 1, cIdx: 0 }, redundancyIdx: 2 });
+    const session = createReceiverSession();
+    let t0 = 0;
+    for (let i = 0; i < 40; i++) {
+      const f = wire(src.next());
+      if (!f) continue;
+      for (let rep = 0; rep < 4; rep++) session.onFrame(f, (t0 += 25));
+    }
+    const st = session.getState(t0);
+    const sent = 40 - 3 - Math.floor(37 / 16);
+    expect(st.transfer!.dataFrames).toBeLessThanOrEqual(sent);
+    expect(st.dataFps).toBeLessThan(40 / ((t0 / 1000) || 1));
   });
 
   it('reports failure when the whole-file CRC does not match', () => {
     const data = makeFile(2000, 4);
-    const src = createFileSource({ data, name: 'x', spec: { nIdx: 1, cIdx: 0 }, redundancyIdx: 'endless' });
+    const src = createFileSource({ data, name: 'x', spec: { nIdx: 1, cIdx: 0 }, redundancyIdx: 2 });
     const session = createReceiverSession();
-    const first = wire(src.next()!)!;
+    const first = wire(src.next())!;
     // rebuild a META with a wrong file CRC
     const bad = { ...first, body: first.body.slice() };
     new DataView(bad.body.buffer).setUint32(11, 0x12345678);
@@ -93,7 +113,7 @@ describe('file transfer', () => {
 
   it('does not decode through the full image path unless the frame CRC passes (smoke test)', () => {
     const data = makeFile(500, 8);
-    const src = createFileSource({ data, name: 'p', spec: { nIdx: 1, cIdx: 1 }, redundancyIdx: 'endless' });
+    const src = createFileSource({ data, name: 'p', spec: { nIdx: 1, cIdx: 1 }, redundancyIdx: 2 });
     const session = createReceiverSession();
     for (let i = 0; i < 2; i++) {
       const plan = src.next()!;

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createDecoder, isCameraAvailable, startCamera, startGrabber, type CameraInfo } from '../camera';
 import { COLOR_COUNTS, FPS_LEVELS, GRID_SIZES } from '../frame';
 import { stepBandwidth } from '../probe';
+import { expectedSymbols } from '../fountain';
 import { useI18n } from '../i18n/react';
 import { createReceiverSession, type ReceiverSession, type ReceiverState } from '../receiver';
 import { formatBytes, formatDuration, formatRate } from './format';
@@ -76,7 +77,10 @@ export const ReceivePanel = () => {
   };
 
   const tr = state.transfer;
-  const needFrames = tr ? Math.ceil(tr.k * 1.25) : 0;
+  // LT decoding finishes after roughly expectedSymbols(k) distinct frames, so progress follows frames received
+  // (blocks solved stays near zero until late). Repeated captures of one on-screen frame are not counted.
+  const needFrames = tr ? expectedSymbols(tr.k) : 0;
+  const progressValue = !tr ? 0 : tr.status === 'done' ? 1 : Math.min(0.99, Math.max(tr.solved / tr.k, tr.dataFrames / needFrames));
   const eta =
     tr && tr.status === 'receiving' && state.dataFps > 0
       ? t('rx.eta', {
@@ -121,12 +125,12 @@ export const ReceivePanel = () => {
           {tr ? (
             <>
               <p>{t('rx.file', { name: tr.fileName, size: formatBytes(tr.fileSize) })}</p>
-              <p>{t('rx.blocks', { k: tr.k, solved: tr.solved, pct: Math.floor((tr.solved / tr.k) * 100) })}</p>
+              <p>{t('rx.blocks', { k: tr.k, received: tr.dataFrames, solved: tr.solved, pct: Math.floor(progressValue * 100) })}</p>
               <p>
                 {t('rx.rate', { rate })}
                 {eta && ` · ${eta}`}
               </p>
-              <progress value={tr.solved} max={tr.k} />
+              <progress value={progressValue} max={1} />
               {tr.status === 'done' && tr.fileBytes && (
                 <p>
                   <span className="ok">{t('rx.verified')}</span>{' '}

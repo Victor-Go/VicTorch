@@ -33,7 +33,7 @@ type StepResult = { stepId; seg: 0|1|2|3; fpsIdx; nIdx; cIdx; total: number; pas
 
 ## 4. 推荐算法（`recommend(results)`）
 
-常量：`PASS_RATE = 0.85`，`LT_OVERHEAD = 0.25`。
+常量：`PASS_RATE = 0.85`，`RELIABLE_RATE = 0.95`，`LT_OVERHEAD = 0.25`。
 
 吞吐：`throughput(f,n,c,rate) = (capacityBytes(n,c) - 4) * FPS_LEVELS[f] * rate`（字节/秒）。
 
@@ -41,7 +41,7 @@ type StepResult = { stepId; seg: 0|1|2|3; fpsIdx; nIdx; cIdx; total: number; pas
    取“连续前缀”而非“任意最高通过档”，以免个别偶然通过的高档误导。
 2. 每一档本身就是一个完整的、被实测过的配置（帧率、密度、颜色）。候选 = 各段扫描序列中，从起点档起连续满足 `rate ≥ PASS_RATE` 的那些档（孤立的偶然通过不计）。
 3. 每档带宽 `bandwidth = (capacityBytes(n,c) - 4) * FPS_LEVELS[f] * rate`（字节/秒），接收端对每一档都显示。
-4. 推荐候选中带宽最高的一档（并列取更保守者）；不再外推未测过的组合，也不再额外降档。
+4. 成功率优先（重发代价高）：候选中成功率 ≥ `RELIABLE_RATE = 0.95` 的档先选出，其中带宽最高者胜出（并列取更保守者）。若没有任何一档达到 95%，则在候选中先比成功率，再比带宽。不再外推未测过的组合，也不再额外降档。
 5. 纠错比例：推荐档的丢帧率 `p = 1 - 该档成功率`，
    `r = (LT_OVERHEAD + p) / (1 - p)`，取 `REDUNDANCY_LEVELS` 中不小于 `r` 的最小档，超过 100% 取 100%。
 6. 若起点档也未通过，返回保守默认 (fps4, N48, 2 色) 并 `poor = true`。

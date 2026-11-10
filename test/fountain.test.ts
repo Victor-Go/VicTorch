@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createLtDecoder, createLtEncoder, splitIntoBlocks, symbolIndices } from '../src/fountain';
+import { createLtDecoder, createLtEncoder, expectedSymbols, splitIntoBlocks, symbolIndices } from '../src/fountain';
 
 const mulberry = (a: number) => () => {
   a = (a + 0x6d2b79f5) | 0;
@@ -85,6 +85,8 @@ describe('LT fountain', () => {
       }
       console.log(`K=${k} mean symbols/K = ${(total / trials).toFixed(3)}`);
       expect(total / trials).toBeLessThan(k >= 200 ? 1.5 : 2.2);
+      // the time estimate must not be optimistic compared with what the decoder really needs
+      expect(expectedSymbols(k) / k).toBeGreaterThanOrEqual(total / trials);
     }
   });
 });

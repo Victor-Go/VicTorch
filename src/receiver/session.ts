@@ -12,7 +12,7 @@ export type TransferState = {
   k: number;
   solved: number;
   status: 'receiving' | 'done' | 'failed';
-  /** data frames accepted so far */
+  /** distinct data frames received so far */
   dataFrames: number;
   fileBytes: Uint8Array | null;
 };
@@ -69,12 +69,14 @@ export const createReceiverSession = () => {
     }
   };
 
-  const feed = (seed: number, body: Uint8Array) => {
-    if (!decoder || !transfer || transfer.status !== 'receiving') return;
-    decoder.add(seed, body);
-    transfer.dataFrames++;
+  /** Feeds one symbol; returns true when it was new. */
+  const feed = (seed: number, body: Uint8Array): boolean => {
+    if (!decoder || !transfer || transfer.status !== 'receiving') return false;
+    const isNew = decoder.add(seed, body);
+    transfer.dataFrames = decoder.receivedCount();
     transfer.solved = decoder.solvedCount();
     if (decoder.isComplete()) finishAssembly();
+    return isNew;
   };
 
   const startTransfer = (transferId: number, m: Meta) => {
@@ -114,7 +116,8 @@ export const createReceiverSession = () => {
       lastNow = nowMs;
       validFrames++;
       if (firstT === null) firstT = nowMs;
-      events.push({ t: nowMs, bytes: body.length, data: header.type === 0 });
+      const event = { t: nowMs, bytes: body.length, data: header.type === 0 };
+      events.push(event);
 
       switch (header.type) {
         case 1: {
@@ -129,7 +132,11 @@ export const createReceiverSession = () => {
           if (mode === 'probe') mode = 'transfer';
           if (mode === 'idle') mode = 'transfer';
           if (transfer && transfer.transferId === header.transferId) {
-            feed(header.arg, body);
+            // a camera shows each code for several captures: repeats must not inflate rate or progress
+            if (!feed(header.arg, body)) {
+              event.bytes = 0;
+              event.data = false;
+            }
           } else if (!transfer || transfer.status !== 'receiving') {
             // unknown transfer: keep the symbols until its META shows up
             if (bufferedCount < MAX_BUFFERED) {

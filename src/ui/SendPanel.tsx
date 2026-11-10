@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { COLOR_COUNTS, FPS_LEVELS, GRID_SIZES, REDUNDANCY_LEVELS, bodyCapacity } from '../frame';
 import { useI18n } from '../i18n/react';
 import {
-  blockCount, createFileSource, createFrameClock, estimateSeconds, minimumFramesForEndless, planToImage, startTicker, totalFrames,
+  blockCount, createFileSource, createFrameClock, estimateSeconds, planToImage, startTicker, totalFrames,
   type FileSource,
 } from '../sender';
 import { CodeScreen, pickTargetPx, useCodeScreen, useCountdown } from './CodeScreen';
@@ -14,10 +14,11 @@ export const SendPanel = () => {
   const [nIdx, setNIdx] = useState(1);
   const [cIdx, setCIdx] = useState(0);
   const [fpsIdx, setFpsIdx] = useState(1);
-  const [redIdx, setRedIdx] = useState<number | 'endless'>(1);
+  const [redIdx, setRedIdx] = useState(2);
   const [fullscreen, setFullscreen] = useState(false);
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState('');
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const screen = useCodeScreen();
   const countdown = useCountdown();
@@ -34,6 +35,7 @@ export const SendPanel = () => {
     screen.exitFullscreen();
     setRunning(false);
     setStatus(msg);
+    setProgress(0);
   };
 
   const start = () => {
@@ -55,19 +57,19 @@ export const SendPanel = () => {
   const run = (source: FileSource) => {
     const fps = FPS_LEVELS[fpsIdx];
     const clock = createFrameClock(1000 / fps);
-    const planned = redIdx === 'endless' ? null : totalFrames(source.info.k, redIdx);
+    const planned = totalFrames(source.info.k, redIdx);
     let shown = 0;
     stopRef.current = startTicker(clock, () => {
       const plan = source.next();
-      if (!plan) return stop(t('send.statusDone'));
       screen.draw(planToImage(plan, pickTargetPx()));
       shown++;
       if (shown % 5 !== 0) return;
-      if (planned) {
-        const left = formatDuration(estimateSeconds(Math.max(0, planned - shown), fps), t);
+      setProgress(Math.min(1, shown / planned));
+      if (shown < planned) {
+        const left = formatDuration(estimateSeconds(planned - shown, fps), t);
         setStatus(t('send.statusProgress', { sent: shown, total: planned, left }));
       } else {
-        setStatus(t('send.statusEndless', { sent: shown }));
+        setStatus(t('send.statusOver', { sent: shown }));
       }
     });
     setStatus(t('send.statusSending'));
@@ -76,13 +78,7 @@ export const SendPanel = () => {
   const fps = FPS_LEVELS[fpsIdx];
   const bodyBytes = bodyCapacity(nIdx, cIdx);
   const blocks = file ? blockCount(file.data.length, nIdx, cIdx) : 0;
-  let eta = '';
-  if (file) {
-    eta =
-      redIdx === 'endless'
-        ? t('send.etaEndless', { time: formatDuration(estimateSeconds(minimumFramesForEndless(blocks), fps), t) })
-        : t('send.etaFinite', { time: formatDuration(estimateSeconds(totalFrames(blocks, redIdx), fps), t) });
-  }
+  const eta = file ? t('send.eta', { time: formatDuration(estimateSeconds(totalFrames(blocks, redIdx), fps), t) }) : '';
 
   return (
     <section className="layout">
@@ -131,15 +127,10 @@ export const SendPanel = () => {
           </label>
           <label className="field">
             {t('send.redundancy')}
-            <select
-              disabled={running}
-              value={redIdx}
-              onChange={(e) => setRedIdx(e.target.value === 'endless' ? 'endless' : +e.target.value)}
-            >
+            <select disabled={running} value={redIdx} onChange={(e) => setRedIdx(+e.target.value)}>
               {REDUNDANCY_LEVELS.map((r, i) => (
                 <option key={r} value={i}>{Math.round(r * 100)}%</option>
               ))}
-              <option value="endless">{t('send.endless')}</option>
             </select>
           </label>
         </div>
@@ -153,7 +144,7 @@ export const SendPanel = () => {
             </>
           )}
           <br />
-          {t('send.warn')}
+          {t('send.note')}
         </p>
         <div className="row">
           {!running ? (
@@ -171,6 +162,7 @@ export const SendPanel = () => {
         </label>
         {error && <p className="error">{error}</p>}
         <p className="status">{status}</p>
+        <progress value={progress} max={1} />
       </div>
       <CodeScreen screen={screen} count={countdown.count} />
     </section>

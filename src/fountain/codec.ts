@@ -58,8 +58,9 @@ export const createLtDecoder = (k: number, blockSize: number) => {
   };
 
   return {
-    add: (seed: number, data: Uint8Array): void => {
-      if (data.length !== blockSize || seen.has(seed >>> 0)) return;
+    /** Returns true when the symbol was new (not a repeat of a seed already seen). */
+    add: (seed: number, data: Uint8Array): boolean => {
+      if (data.length !== blockSize || seen.has(seed >>> 0)) return false;
       seen.add(seed >>> 0);
       const d = data.slice();
       const pending: number[] = [];
@@ -68,10 +69,10 @@ export const createLtDecoder = (k: number, blockSize: number) => {
         if (known) xorInto(d, known);
         else pending.push(i);
       }
-      if (pending.length === 0) return;
+      if (pending.length === 0) return true;
       if (pending.length === 1) {
         resolve(pending[0], d);
-        return;
+        return true;
       }
       const eq: Equation = { pending, data: d };
       for (const i of pending) {
@@ -79,7 +80,9 @@ export const createLtDecoder = (k: number, blockSize: number) => {
         if (list) list.push(eq);
         else waiting.set(i, [eq]);
       }
+      return true;
     },
+    receivedCount: (): number => seen.size,
     isComplete: (): boolean => solved === k,
     solvedCount: (): number => solved,
     assemble: (fileSize: number): Uint8Array | null => {

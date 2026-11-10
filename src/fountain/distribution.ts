@@ -28,3 +28,12 @@ export const robustSolitonCdf = (k: number): Float64Array => {
   cache.set(k, mu);
   return mu;
 };
+
+/**
+ * Mean extra symbols an LT decoder needs beyond K, measured: ~38% at K=50, ~30% at K=200, ~19% at K=1000.
+ * Fitted against log10(K) and clamped.
+ */
+export const ltOverhead = (k: number): number => Math.min(0.5, Math.max(0.1, 0.62 - 0.145 * Math.log10(Math.max(1, k))));
+
+/** Distinct symbols after which decoding is usually done (mean plus a small margin). */
+export const expectedSymbols = (k: number): number => Math.ceil(k * (1 + ltOverhead(k) + 0.05));

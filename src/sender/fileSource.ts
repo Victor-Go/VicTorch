@@ -11,16 +11,16 @@ export type FileSourceOptions = {
   data: Uint8Array;
   name: string;
   spec: GridSpec;
-  /** index into REDUNDANCY_LEVELS, or 'endless' to keep producing new symbols until stopped */
-  redundancyIdx: number | 'endless';
+  /** index into REDUNDANCY_LEVELS: the planned redundancy, used for progress and time estimates only; sending never stops by itself */
+  redundancyIdx: number;
   transferId?: number;
   seedBase?: number;
 };
 
 export type FileSource = {
-  info: { k: number; blockSize: number; fileSize: number; totalData: number | null; transferId: number };
-  next: () => FramePlan | null;
-  progress: () => { sentData: number; totalData: number | null };
+  info: { k: number; blockSize: number; fileSize: number; plannedData: number; transferId: number };
+  next: () => FramePlan;
+  progress: () => { sentData: number; plannedData: number };
 };
 
 const randomU32 = () => Math.floor(Math.random() * 4294967296) >>> 0;
@@ -34,7 +34,7 @@ export const createFileSource = (o: FileSourceOptions): FileSource => {
   const encoder = createLtEncoder(blocks);
   const transferId = o.transferId ?? Math.floor(Math.random() * 65536);
   const seedBase = o.seedBase ?? randomU32();
-  const totalData = o.redundancyIdx === 'endless' ? null : Math.ceil(k * (1 + REDUNDANCY_LEVELS[o.redundancyIdx]));
+  const plannedData = Math.ceil(k * (1 + REDUNDANCY_LEVELS[o.redundancyIdx]));
 
   const cons = conservativeFor(o.spec);
   const metaBody = encodeMeta(
@@ -48,8 +48,8 @@ export const createFileSource = (o: FileSourceOptions): FileSource => {
   let sentData = 0;
 
   return {
-    info: { k, blockSize, fileSize: o.data.length, totalData, transferId },
-    progress: () => ({ sentData, totalData }),
+    info: { k, blockSize, fileSize: o.data.length, plannedData, transferId },
+    progress: () => ({ sentData, plannedData }),
     next: () => {
       if (metaLeft > 0) {
         metaLeft--;
@@ -60,7 +60,6 @@ export const createFileSource = (o: FileSourceOptions): FileSource => {
         sinceMeta = 0;
         return metaPlan();
       }
-      if (totalData !== null && sentData >= totalData) return null;
       const seed = (seedBase + sentData) >>> 0;
       sentData++;
       sinceMeta++;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FPS_LEVELS, GRID_SIZES, COLOR_COUNTS, bodyCapacity } from '../src/frame';
 import {
-  PROBE_STEPS, SWEEPS, buildProbeSchedule, createProbeTally, probeDurationSeconds, recommend, stepBandwidth, type StepResult,
+  PROBE_STEPS, SWEEPS, buildProbeSchedule, createProbeTally, probeDurationSeconds, recommend, type StepResult,
 } from '../src/probe';
 
 type StepInfo = { stepId: number; seg: number; fpsIdx: number; nIdx: number; cIdx: number };
@@ -64,13 +64,20 @@ describe('recommend', () => {
     expect(rec.redundancy).toBe(0.3);
   });
 
-  it('bandwidth counts the success rate, so a lossy fast step can lose to a clean slower one', () => {
+  it('reliability comes first: a faster step below 95% never beats a clean slower one', () => {
     const fast = PROBE_STEPS[PROBE_STEPS.length - 1];
-    const rs = results((s) => (s.stepId === fast.stepId ? 0.875 : 1));
-    const best = recommend(rs);
-    const lossy = rs.find((r) => r.stepId === fast.stepId)!;
-    expect(stepBandwidth(lossy)).toBeLessThan(bodyCapacity(4, 3) * FPS_LEVELS[8]);
-    expect(best.expectedBytesPerSec).toBeGreaterThanOrEqual(stepBandwidth(lossy) - 1e-6);
+    const rec = recommend(results((s) => (s.stepId === fast.stepId ? 0.875 : 1)));
+    expect([rec.fpsIdx, rec.nIdx, rec.cIdx]).not.toEqual([fast.fpsIdx, fast.nIdx, fast.cIdx]);
+    const match = PROBE_STEPS.find((s) => s.fpsIdx === rec.fpsIdx && s.nIdx === rec.nIdx && s.cIdx === rec.cIdx)!;
+    expect(match.stepId).not.toBe(fast.stepId);
+    expect(rec.lossRate).toBe(0);
+  });
+
+  it('when nothing is reliable, the highest success rate wins even over much higher bandwidth', () => {
+    // 20 fps / 48x48 / 2 colours: 15 of 16 frames (93.75%, below the 95% bar); every other step is at most 11 of 12
+    const rec = recommend(results((s) => (s.fpsIdx === 7 && s.nIdx === 1 && s.cIdx === 0 ? 0.9375 : 0.875)));
+    expect([rec.fpsIdx, rec.nIdx, rec.cIdx]).toEqual([7, 1, 0]);
+    expect(rec.lossRate).toBeCloseTo(1 / 16, 3);
   });
 
   it('high frame rates failing caps the fps', () => {

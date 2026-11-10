@@ -5,6 +5,8 @@ import { SWEEPS } from './steps';
 import type { StepResult } from './tally';
 
 export const PASS_RATE = 0.85;
+/** A resend is expensive, so steps at or above this rate are always preferred over faster but lossier ones. */
+export const RELIABLE_RATE = 0.95;
 export const LT_OVERHEAD = 0.25;
 
 export type Recommendation = {
@@ -88,15 +90,20 @@ export const recommend = (results: StepResult[]): Recommendation => {
   }
   if (candidates.size === 0) return fallback();
 
-  let best: StepResult | null = null;
-  for (const r of candidates.values()) {
-    if (!best) {
-      best = r;
-      continue;
+  // Reliability first: only if no step is reliable do lossier candidates compete, and then the
+  // highest success rate wins before bandwidth is considered.
+  const all = [...candidates.values()];
+  const reliable = all.filter((r) => rateOf(r) >= RELIABLE_RATE);
+  const pool = reliable.length > 0 ? reliable : all;
+  const better = (x: StepResult, y: StepResult): boolean => {
+    if (reliable.length === 0) {
+      const dr = rateOf(x) - rateOf(y);
+      if (Math.abs(dr) > 1e-9) return dr > 0;
     }
-    const d = stepBandwidth(r) - stepBandwidth(best);
-    const lighter = r.fpsIdx + r.nIdx + r.cIdx < best.fpsIdx + best.nIdx + best.cIdx;
-    if (d > 1e-9 || (Math.abs(d) <= 1e-9 && lighter)) best = r;
-  }
-  return finish({ f: best!.fpsIdx, n: best!.nIdx, c: best!.cIdx }, rateOf(best!), false);
+    const d = stepBandwidth(x) - stepBandwidth(y);
+    if (Math.abs(d) > 1e-9) return d > 0;
+    return x.fpsIdx + x.nIdx + x.cIdx < y.fpsIdx + y.nIdx + y.cIdx;
+  };
+  const best = pool.reduce((acc, x) => (better(x, acc) ? x : acc));
+  return finish({ f: best.fpsIdx, n: best!.nIdx, c: best.cIdx }, rateOf(best), false);
 };
